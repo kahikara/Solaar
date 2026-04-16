@@ -16,6 +16,8 @@
 ## 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 from __future__ import annotations
 
+import builtins
+
 import logging
 import socket
 import struct
@@ -1481,6 +1483,8 @@ class OnboardProfile:
                     gbuttons=[Button.from_bytes(bytes[48 + buttons * 4 + i * 4 : 48 + buttons * 4 + i * 4 + 4]) for i in range(0, gbuttons)],
                     name=bytes[160:208].decode("utf-16le").rstrip("\x00").rstrip("\uffff"),
                     lighting=[LEDEffectSetting.from_bytes(bytes[208 + i * 11 : 219 + i * 11]) for i in range(0, 4)],
+                    _raw_bytes=bytes,
+                    _pro2_format=True,
                 )
 
         return cls(
@@ -1511,6 +1515,33 @@ class OnboardProfile:
         return cls.from_bytes(sector, enabled, buttons, gbuttons, bytes)
 
     def to_bytes(self, length):
+        if getattr(self, "_pro2_format", False) and hasattr(self, "_raw_bytes"):
+            bs = bytearray(self._raw_bytes[:length])
+            if len(bs) < length:
+                bs.extend(b"\xff" * (length - len(bs)))
+
+            bs[0] = self.report_rate & 0xFF
+            bs[1] = self.resolution_default_index & 0xFF
+            bs[2] = self.resolution_shift_index & 0xFF
+
+            stage_offsets = [3, 8, 13, 18, 23]
+            stage_prefixes = [0x00, 0x02, 0x02, 0x02, 0x02]
+            for i, off in enumerate(stage_offsets):
+                dpi = int(self.resolutions[i]) if i < len(self.resolutions) else 800
+                bs[off] = stage_prefixes[i]
+                bs[off + 1:off + 3] = dpi.to_bytes(2, "little")
+                bs[off + 3:off + 5] = dpi.to_bytes(2, "little")
+
+            button_base = 48
+            for i in range(8):
+                chunk = self.buttons[i].to_bytes() if i < len(self.buttons) else b"\xff\xff\xff\xff"
+                bs[button_base + i * 4:button_base + i * 4 + 4] = chunk
+
+            body = builtins.bytes(bs[:-2])
+            crc = common.crc16(body)
+            bs[-2:] = common.int2bytes(crc, 2)
+            return builtins.bytes(bs)
+
         bytes = common.int2bytes(self.report_rate, 1)
         bytes += common.int2bytes(self.resolution_default_index, 1) + common.int2bytes(self.resolution_shift_index, 1)
         bytes += b"".join([self.resolutions[i].to_bytes(2, "little") for i in range(0, 5)])
