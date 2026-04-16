@@ -18,6 +18,20 @@ sys.path.insert(0, str(ROOT / "lib"))
 # Import registers YAML constructors for !OnboardProfiles, !OnboardProfile, !Button, !LEDEffectSetting
 from logitech_receiver.hidpp20 import OnboardProfiles  # noqa: F401
 
+BUTTON_ALIASES = {
+    "left": 1,
+    "right": 2,
+    "middle": 4,
+    "back": 8,
+    "forward": 16,
+}
+
+def parse_value(raw: str) -> int:
+    s = raw.strip().lower()
+    if s in BUTTON_ALIASES:
+        return BUTTON_ALIASES[s]
+    return int(s, 0)
+
 
 def run(cmd: list[str]) -> None:
     print("+", " ".join(cmd))
@@ -53,7 +67,7 @@ def main() -> int:
     ap.add_argument("--device", default="1")
     ap.add_argument("--profile", type=int, default=1)
     ap.add_argument("--button", type=int, help="1-based button index, 1..8")
-    ap.add_argument("--value", type=int, help="raw button value")
+    ap.add_argument("--value", type=str, help="raw button value or alias: left,right,middle,back,forward")
     ap.add_argument("--behavior", type=int, default=8)
     ap.add_argument("--type", dest="mapping_type", type=int, default=1)
     ap.add_argument("--write", action="store_true", help="actually write back to device")
@@ -82,6 +96,8 @@ def main() -> int:
     if not (1 <= args.button <= 8):
         raise SystemExit("button must be between 1 and 8")
 
+    parsed_value = parse_value(args.value)
+
     profile_numbers = range(1, 6) if args.set_all_profiles else [args.profile]
     idx = args.button - 1
 
@@ -92,7 +108,7 @@ def main() -> int:
 
         profile.buttons[idx].behavior = args.behavior
         profile.buttons[idx].type = args.mapping_type
-        profile.buttons[idx].value = args.value
+        profile.buttons[idx].value = parsed_value
 
         for attr in ["bytes", "sector", "address", "modifiers", "data"]:
             if hasattr(profile.buttons[idx], attr):
