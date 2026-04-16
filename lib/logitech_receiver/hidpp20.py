@@ -1461,6 +1461,19 @@ class OnboardProfile:
 
             if all(x == y and 50 <= x <= 50000 for _stage, x, y in dpi_stages):
                 resolutions = [x for _stage, x, _y in dpi_stages]
+                logger.info(
+                    "%s pro2 sector=%s candidate button ranges raw32=%s raw36=%s raw40=%s raw44=%s raw48=%s raw52=%s raw56=%s raw60=%s",
+                    sector,
+                    sector,
+                    bytes[32:64].hex(),
+                    bytes[36:68].hex(),
+                    bytes[40:72].hex(),
+                    bytes[44:76].hex(),
+                    bytes[48:80].hex(),
+                    bytes[52:84].hex(),
+                    bytes[56:88].hex(),
+                    bytes[60:92].hex(),
+                )
                 return cls(
                     sector=sector,
                     enabled=enabled,
@@ -1477,8 +1490,8 @@ class OnboardProfile:
                     reserved=bytes[20:28],
                     ps_timeout=struct.unpack("<H", bytes[28:30])[0],
                     po_timeout=struct.unpack("<H", bytes[30:32])[0],
-                    buttons=[Button.from_bytes(bytes[32 + i * 4 : 32 + i * 4 + 4]) for i in range(0, buttons)],
-                    gbuttons=[Button.from_bytes(bytes[96 + i * 4 : 96 + i * 4 + 4]) for i in range(0, gbuttons)],
+                    buttons=[Button.from_bytes(bytes[48 + i * 4 : 48 + i * 4 + 4]) for i in range(0, buttons)],
+                    gbuttons=[Button.from_bytes(bytes[48 + buttons * 4 + i * 4 : 48 + buttons * 4 + i * 4 + 4]) for i in range(0, gbuttons)],
                     name=bytes[160:208].decode("utf-16le").rstrip("\x00").rstrip("\uffff"),
                     lighting=[LEDEffectSetting.from_bytes(bytes[208 + i * 11 : 219 + i * 11]) for i in range(0, 4)],
                 )
