@@ -474,20 +474,11 @@ class SliderControl(Gtk.Scale, Control):
 
 
 def _create_choice_control(sbox, delegate=None, choices=None):
-    holder = getattr(sbox, "setting", sbox)
-    setting_name = getattr(holder, "name", None)
-    effective_choices = choices if choices is not None else holder.choices
-
-    if setting_name in ("dpi", "dpi_extended", "dpi-old"):
-        return ChoiceControlLittle(sbox, choices=effective_choices, delegate=delegate)
-
-    if 50 > len(effective_choices):
-        return ChoiceControlLittle(sbox, choices=effective_choices, delegate=delegate)
+    if 50 > len(choices if choices else sbox.setting.choices):
+        return ChoiceControlLittle(sbox, choices=choices, delegate=delegate)
     else:
-        return ChoiceControlBig(sbox, choices=effective_choices, delegate=delegate)
+        return ChoiceControlBig(sbox, choices=choices, delegate=delegate)
 
-
-# GTK boxes have property lists, but the keys must be strings
 class ChoiceControlLittle(Gtk.ComboBoxText, Control):
     def __init__(self, sbox, delegate=None, choices=None):
         super().__init__(halign=Gtk.Align.FILL)
