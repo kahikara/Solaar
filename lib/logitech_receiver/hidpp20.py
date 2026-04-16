@@ -1474,6 +1474,22 @@ class OnboardProfile:
                     bytes[56:88].hex(),
                     bytes[60:92].hex(),
                 )
+                logger.info(
+                    "%s pro2 sector=%s candidate gbutton ranges raw80=%s raw84=%s raw88=%s raw92=%s raw96=%s raw100=%s raw104=%s raw108=%s raw112=%s raw116=%s raw120=%s",
+                    sector,
+                    sector,
+                    bytes[80:112].hex(),
+                    bytes[84:116].hex(),
+                    bytes[88:120].hex(),
+                    bytes[92:124].hex(),
+                    bytes[96:128].hex(),
+                    bytes[100:132].hex(),
+                    bytes[104:136].hex(),
+                    bytes[108:140].hex(),
+                    bytes[112:144].hex(),
+                    bytes[116:148].hex(),
+                    bytes[120:152].hex(),
+                )
                 return cls(
                     sector=sector,
                     enabled=enabled,
