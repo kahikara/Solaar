@@ -1547,10 +1547,16 @@ class OnboardProfiles:
         headers = []
         chunk = device.feature_request(SupportedFeature.ONBOARD_PROFILES, 0x50, 0, 0, 0, i)
         s = 0x00
+        if not chunk:
+            return headers
         if chunk[0:4] == b"\x00\x00\x00\x00" or chunk[0:4] == b"\xff\xff\xff\xff":  # look in ROM instead
             chunk = device.feature_request(SupportedFeature.ONBOARD_PROFILES, 0x50, 0x01, 0, 0, i)
             s = 0x01
-        while chunk[0:2] != b"\xff\xff":
+            if not chunk:
+                return headers
+        while chunk and chunk[0:2] != b"\xff\xff":
+            if len(chunk) < 3:
+                break
             sector, enabled = struct.unpack("!HB", chunk[0:3])
             headers.append((sector, enabled))
             i += 1
@@ -1562,8 +1568,10 @@ class OnboardProfiles:
         if not device.online:  # wake the device up if necessary
             device.ping()
         response = device.feature_request(SupportedFeature.ONBOARD_PROFILES, 0x00)
+        if not response or len(response) < 10:
+            return
         memory, profile, _macro = struct.unpack("!BBB", response[0:3])
-        if memory != 0x01 or profile > 0x05:
+        if memory != 0x01:
             return
         count, oob, buttons, sectors, size, shift = struct.unpack("!BBBBHB", response[3:10])
         gbuttons = buttons if (shift & 0x3 == 0x2) else 0
