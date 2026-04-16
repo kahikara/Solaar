@@ -139,6 +139,19 @@ def _pro2_ensure_panel(device):
     row_profile.pack_start(profile_combo, False, False, 0)
     outer.pack_start(row_profile, False, False, 0)
 
+
+    row_dpi = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+    row_dpi.set_size_request(10, 28)
+    dpi_lbl = Gtk.Label(label="DPI Stage")
+    dpi_lbl.set_size_request(170, 10)
+    dpi_lbl.set_xalign(0.0)
+    row_dpi.pack_start(dpi_lbl, False, False, 0)
+
+    dpi_combo = Gtk.ComboBoxText()
+    row_dpi.pack_start(dpi_combo, False, False, 0)
+
+    outer.pack_start(row_dpi, False, False, 0)
+
     button_combos = []
     for label_text in PRO2_BUTTON_LABELS:
         row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
@@ -167,6 +180,7 @@ def _pro2_ensure_panel(device):
     frame._device = device
     frame._profile_combo = profile_combo
     frame._button_combos = button_combos
+    frame._dpi_combo = dpi_combo
     frame._status_lbl = status_lbl
 
     def load_profile(*_args):
@@ -196,6 +210,27 @@ def _pro2_ensure_panel(device):
                 combo.set_active_id(BUTTON_FUNCTION_VALUE_TO_ALIAS.get(value, "left"))
             else:
                 combo.set_active_id(BUTTON_VALUE_TO_ALIAS.get(value, "left"))
+
+        dpi_combo.remove_all()
+        try:
+            resolutions = list(profile.resolutions)
+        except Exception:
+            resolutions = []
+
+        for idx, dpi in enumerate(resolutions):
+            dpi_combo.append(str(idx), str(dpi))
+
+        try:
+            active_idx = int(profile.resolution_default_index)
+        except Exception:
+            active_idx = 0
+
+        if resolutions:
+            if active_idx < 0 or active_idx >= len(resolutions):
+                active_idx = 0
+            dpi_combo.set_active_id(str(active_idx))
+        else:
+            dpi_combo.set_active(-1)
 
         status_lbl.set_text("loaded")
     def apply_profile(*_args):
@@ -242,6 +277,15 @@ def _pro2_ensure_panel(device):
                         delattr(button, attr)
                     except Exception:
                         pass
+
+        try:
+            dpi_idx = dpi_combo.get_active_id()
+            if dpi_idx is not None:
+                dpi_idx = int(dpi_idx)
+                if 0 <= dpi_idx < len(profile.resolutions):
+                    profile.resolution_default_index = dpi_idx
+        except Exception:
+            pass
 
         written = profiles.write(device)
         status_lbl.set_text(f"written {written}")
