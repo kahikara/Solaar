@@ -32,7 +32,52 @@ BUTTON_ALIAS_TO_VALUE = {
     "back": 8,
     "forward": 16,
 }
+
+BUTTON_FUNCTION_ALIAS_TO_VALUE = {
+    "tilt_left": 1,
+    "tilt_right": 2,
+    "dpi_next": 3,
+    "dpi_previous": 4,
+    "dpi": 5,
+    "dpi_default": 6,
+    "dpi_shift": 7,
+    "profile_next": 8,
+    "profile_previous": 9,
+    "profile_cycle": 10,
+    "g_shift": 11,
+    "battery_status": 12,
+    "profile_select": 13,
+    "mode_switch": 14,
+    "wheel_down": 16,
+    "wheel_up": 17,
+}
+
 BUTTON_VALUE_TO_ALIAS = {v: k for k, v in BUTTON_ALIAS_TO_VALUE.items()}
+BUTTON_FUNCTION_VALUE_TO_ALIAS = {v: k for k, v in BUTTON_FUNCTION_ALIAS_TO_VALUE.items()}
+
+BUTTON_DROPDOWN_ITEMS = [
+    ("left", "Left"),
+    ("right", "Right"),
+    ("middle", "Middle"),
+    ("back", "Back"),
+    ("forward", "Forward"),
+    ("dpi", "DPI"),
+    ("wheel_up", "Wheel Up"),
+    ("wheel_down", "Wheel Down"),
+    ("tilt_left", "Tilt Left"),
+    ("tilt_right", "Tilt Right"),
+    ("dpi_next", "DPI Next"),
+    ("dpi_previous", "DPI Previous"),
+    ("dpi_default", "DPI Default"),
+    ("dpi_shift", "DPI Shift"),
+    ("profile_next", "Profile Next"),
+    ("profile_previous", "Profile Previous"),
+    ("profile_cycle", "Profile Cycle"),
+    ("g_shift", "G Shift"),
+    ("battery_status", "Battery Status"),
+    ("profile_select", "Profile Select"),
+    ("mode_switch", "Mode Switch"),
+]
 
 
 def _pro2_get_profiles(device):
@@ -78,8 +123,8 @@ def _pro2_ensure_panel(device):
         lbl.set_xalign(0.0)
         row.pack_start(lbl, False, False, 0)
         combo = Gtk.ComboBoxText()
-        for alias in PRO2_BINDING_ORDER:
-            combo.append(alias, PRO2_BINDINGS[alias]["label"])
+        for alias, label in BUTTON_DROPDOWN_ITEMS:
+            combo.append(alias, label)
         combo.set_active_id("left")
         row.pack_start(combo, False, False, 0)
         outer.pack_start(row, False, False, 0)
@@ -118,14 +163,12 @@ def _pro2_ensure_panel(device):
                 button = profile.buttons[slot_idx]
                 behavior = getattr(button, "behavior", None)
                 value = getattr(button, "value", None)
-                data = getattr(button, "data", None)
             except Exception:
                 behavior = None
                 value = None
-                data = None
 
-            if behavior == 9 and value == 5 and (data is None or data == 0):
-                combo.set_active_id("dpi")
+            if behavior == 9:
+                combo.set_active_id(BUTTON_FUNCTION_VALUE_TO_ALIAS.get(value, "left"))
             else:
                 combo.set_active_id(BUTTON_VALUE_TO_ALIAS.get(value, "left"))
 
@@ -148,9 +191,9 @@ def _pro2_ensure_panel(device):
             slot_idx = ui_to_slot[idx]
             button = profile.buttons[slot_idx]
 
-            if alias == "dpi":
+            if alias in BUTTON_FUNCTION_ALIAS_TO_VALUE:
                 button.behavior = 9
-                button.value = 5
+                button.value = BUTTON_FUNCTION_ALIAS_TO_VALUE[alias]
                 button.data = 0
                 if hasattr(button, "type"):
                     try:
