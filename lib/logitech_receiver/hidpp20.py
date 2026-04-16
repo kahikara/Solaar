@@ -1446,6 +1446,43 @@ class OnboardProfile:
 
     @classmethod
     def from_bytes(cls, sector, enabled, buttons, gbuttons, bytes):
+        # PRO 2 LIGHTSPEED / WPID 40A8 appears to store five DPI stages
+        # as X/Y little-endian pairs starting at offset 3.
+        # Keep this path read-only for now and only improve decoding.
+        if len(bytes) >= 255:
+            dpi_stages = []
+            off = 3
+            for _ in range(5):
+                stage = bytes[off]
+                x = struct.unpack("<H", bytes[off + 1 : off + 3])[0]
+                y = struct.unpack("<H", bytes[off + 3 : off + 5])[0]
+                dpi_stages.append((stage, x, y))
+                off += 5
+
+            if all(x == y and 50 <= x <= 50000 for _stage, x, y in dpi_stages):
+                resolutions = [x for _stage, x, _y in dpi_stages]
+                return cls(
+                    sector=sector,
+                    enabled=enabled,
+                    report_rate=bytes[0],
+                    resolution_default_index=bytes[1],
+                    resolution_shift_index=bytes[2],
+                    resolutions=resolutions,
+                    red=bytes[13],
+                    green=bytes[14],
+                    blue=bytes[15],
+                    power_mode=bytes[16],
+                    angle_snap=bytes[17],
+                    write_count=struct.unpack("<H", bytes[18:20])[0],
+                    reserved=bytes[20:28],
+                    ps_timeout=struct.unpack("<H", bytes[28:30])[0],
+                    po_timeout=struct.unpack("<H", bytes[30:32])[0],
+                    buttons=[Button.from_bytes(bytes[32 + i * 4 : 32 + i * 4 + 4]) for i in range(0, buttons)],
+                    gbuttons=[Button.from_bytes(bytes[96 + i * 4 : 96 + i * 4 + 4]) for i in range(0, gbuttons)],
+                    name=bytes[160:208].decode("utf-16le").rstrip("\x00").rstrip("\uffff"),
+                    lighting=[LEDEffectSetting.from_bytes(bytes[208 + i * 11 : 219 + i * 11]) for i in range(0, 4)],
+                )
+
         return cls(
             sector=sector,
             enabled=enabled,
