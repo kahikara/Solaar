@@ -110,7 +110,7 @@ def _pro2_ensure_panel(device):
             status_lbl.set_text("profile missing")
             return
 
-        ui_to_slot = [0, 1, 2, 4, 3, 7, 6, 5]
+        ui_to_slot = [0, 1, 2, 3, 4, 7, 6, 5]
 
         for idx, combo in enumerate(button_combos):
             try:
@@ -141,7 +141,7 @@ def _pro2_ensure_panel(device):
             status_lbl.set_text("profile missing")
             return
 
-        ui_to_slot = [0, 1, 2, 4, 3, 7, 6, 5]
+        ui_to_slot = [0, 1, 2, 3, 4, 7, 6, 5]
 
         for idx, combo in enumerate(button_combos):
             alias = combo.get_active_id() or "left"
