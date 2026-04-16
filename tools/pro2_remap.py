@@ -41,21 +41,28 @@ def save_yaml(path: Path, data) -> None:
     path.write_text(yaml.dump(data, width=float("inf")), encoding="utf-8")
 
 
+def show_profile_buttons(data, profile_no: int) -> None:
+    profile = data.profiles[profile_no]
+    print(f"Profile {profile_no}")
+    for i, button in enumerate(profile.buttons, start=1):
+        print(f"  button {i}: {button.__dict__}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Patch Logitech PRO 2 onboard button mapping")
-    ap.add_argument("--device", default="PRO 2 LIGHTSPEED")
+    ap.add_argument("--device", default="1")
     ap.add_argument("--profile", type=int, default=1)
-    ap.add_argument("--button", type=int, required=True, help="1-based button index, 1..8")
-    ap.add_argument("--value", type=int, required=True, help="raw button value")
+    ap.add_argument("--button", type=int, help="1-based button index, 1..8")
+    ap.add_argument("--value", type=int, help="raw button value")
     ap.add_argument("--behavior", type=int, default=8)
     ap.add_argument("--type", dest="mapping_type", type=int, default=1)
     ap.add_argument("--write", action="store_true", help="actually write back to device")
+    ap.add_argument("--show", action="store_true", help="show current button mappings for the selected profile")
+    ap.add_argument("--set-all-profiles", action="store_true", help="apply the same button remap to profiles 1..5")
     args = ap.parse_args()
 
     if not (1 <= args.profile <= 5):
         raise SystemExit("profile must be between 1 and 5")
-    if not (1 <= args.button <= 8):
-        raise SystemExit("button must be between 1 and 8")
 
     dump_profiles(args.device)
 
@@ -64,25 +71,37 @@ def main() -> int:
     print(f"backup: {backup}")
 
     data = load_yaml(TMP)
-    profile = data.profiles[args.profile]
+
+    if args.show:
+        show_profile_buttons(data, args.profile)
+        return 0
+
+    if args.button is None or args.value is None:
+        raise SystemExit("for remap you need --button and --value, or use --show")
+
+    if not (1 <= args.button <= 8):
+        raise SystemExit("button must be between 1 and 8")
+
+    profile_numbers = range(1, 6) if args.set_all_profiles else [args.profile]
     idx = args.button - 1
 
-    old = profile.buttons[idx]
-    print("old:", old.__dict__)
+    for profile_no in profile_numbers:
+        profile = data.profiles[profile_no]
+        old = profile.buttons[idx]
+        print(f"profile {profile_no} old:", old.__dict__)
 
-    profile.buttons[idx].behavior = args.behavior
-    profile.buttons[idx].type = args.mapping_type
-    profile.buttons[idx].value = args.value
+        profile.buttons[idx].behavior = args.behavior
+        profile.buttons[idx].type = args.mapping_type
+        profile.buttons[idx].value = args.value
 
-    # optional cleanup if previous object had different fields
-    for attr in ["bytes", "sector", "address", "modifiers", "data"]:
-        if hasattr(profile.buttons[idx], attr):
-            try:
-                delattr(profile.buttons[idx], attr)
-            except Exception:
-                pass
+        for attr in ["bytes", "sector", "address", "modifiers", "data"]:
+            if hasattr(profile.buttons[idx], attr):
+                try:
+                    delattr(profile.buttons[idx], attr)
+                except Exception:
+                    pass
 
-    print("new:", profile.buttons[idx].__dict__)
+        print(f"profile {profile_no} new:", profile.buttons[idx].__dict__)
     save_yaml(TMP, data)
     print(f"patched: {TMP}")
 
