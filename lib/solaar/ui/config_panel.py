@@ -25,6 +25,169 @@ import gi
 from logitech_receiver import hidpp20
 from logitech_receiver import settings
 
+BUTTON_ALIAS_TO_VALUE = {
+    "left": 1,
+    "right": 2,
+    "middle": 4,
+    "back": 8,
+    "forward": 16,
+}
+BUTTON_VALUE_TO_ALIAS = {v: k for k, v in BUTTON_ALIAS_TO_VALUE.items()}
+
+
+def _pro2_get_profiles(device):
+    try:
+        return hidpp20.OnboardProfiles.from_device(device)
+    except Exception as e:
+        logger.warning("pro2 profiles read failed on %s: %r", device, e)
+        return None
+
+
+def _pro2_ensure_panel(device):
+    global _box
+    assert _box is not None
+
+    panel_id = (device.receiver.path if device.receiver else device.path, device.number, "__pro2_buttons__")
+    existing = _items.get(panel_id)
+    if existing:
+        return existing
+
+    frame = Gtk.Frame(label="PRO 2 Buttons")
+    outer = Gtk.Box.new(Gtk.Orientation.VERTICAL, 6)
+    outer.set_margin_top(6)
+    outer.set_margin_bottom(6)
+    outer.set_margin_start(6)
+    outer.set_margin_end(6)
+    frame.add(outer)
+
+    row_profile = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+    row_profile.pack_start(Gtk.Label(label="Profile"), False, False, 0)
+    profile_combo = Gtk.ComboBoxText()
+    for i in range(1, 6):
+        profile_combo.append(str(i), str(i))
+    profile_combo.set_active_id("1")
+    row_profile.pack_start(profile_combo, False, False, 0)
+    outer.pack_start(row_profile, False, False, 0)
+
+    button_combos = []
+    for label_text in PRO2_BUTTON_LABELS:
+        row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+        row.set_size_request(10, 28)
+        lbl = Gtk.Label(label=label_text)
+        lbl.set_size_request(170, 10)
+        lbl.set_xalign(0.0)
+        row.pack_start(lbl, False, False, 0)
+        combo = Gtk.ComboBoxText()
+        for alias in PRO2_BINDING_ORDER:
+            combo.append(alias, PRO2_BINDINGS[alias]["label"])
+        combo.set_active_id("left")
+        row.pack_start(combo, False, False, 0)
+        outer.pack_start(row, False, False, 0)
+        button_combos.append(combo)
+
+    button_row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+    reload_btn = Gtk.Button(label="Reload")
+    apply_btn = Gtk.Button(label="Apply")
+    status_lbl = Gtk.Label(label="")
+    button_row.pack_start(reload_btn, False, False, 0)
+    button_row.pack_start(apply_btn, False, False, 0)
+    button_row.pack_start(status_lbl, False, False, 0)
+    outer.pack_start(button_row, False, False, 0)
+
+    frame._device = device
+    frame._profile_combo = profile_combo
+    frame._button_combos = button_combos
+    frame._status_lbl = status_lbl
+
+    def load_profile(*_args):
+        profiles = _pro2_get_profiles(device)
+        if not profiles:
+            status_lbl.set_text("read failed")
+            return
+        profile_no = int(profile_combo.get_active_id())
+        profile = profiles.profiles.get(profile_no)
+        if not profile:
+            status_lbl.set_text("profile missing")
+            return
+
+        ui_to_slot = [0, 1, 2, 4, 3, 7, 6, 5]
+
+        for idx, combo in enumerate(button_combos):
+            try:
+                slot_idx = ui_to_slot[idx]
+                button = profile.buttons[slot_idx]
+                behavior = getattr(button, "behavior", None)
+                value = getattr(button, "value", None)
+                data = getattr(button, "data", None)
+            except Exception:
+                behavior = None
+                value = None
+                data = None
+
+            if behavior == 9 and value == 5 and (data is None or data == 0):
+                combo.set_active_id("dpi")
+            else:
+                combo.set_active_id(BUTTON_VALUE_TO_ALIAS.get(value, "left"))
+
+        status_lbl.set_text("loaded")
+    def apply_profile(*_args):
+        profiles = _pro2_get_profiles(device)
+        if not profiles:
+            status_lbl.set_text("read failed")
+            return
+        profile_no = int(profile_combo.get_active_id())
+        profile = profiles.profiles.get(profile_no)
+        if not profile:
+            status_lbl.set_text("profile missing")
+            return
+
+        ui_to_slot = [0, 1, 2, 4, 3, 7, 6, 5]
+
+        for idx, combo in enumerate(button_combos):
+            alias = combo.get_active_id() or "left"
+            slot_idx = ui_to_slot[idx]
+            button = profile.buttons[slot_idx]
+
+            if alias == "dpi":
+                button.behavior = 9
+                button.value = 5
+                button.data = 0
+                if hasattr(button, "type"):
+                    try:
+                        delattr(button, "type")
+                    except Exception:
+                        pass
+            else:
+                value = BUTTON_ALIAS_TO_VALUE[alias]
+                button.behavior = 8
+                button.type = 1
+                button.value = value
+                if hasattr(button, "data"):
+                    try:
+                        delattr(button, "data")
+                    except Exception:
+                        pass
+
+            for attr in ["bytes", "sector", "address", "modifiers"]:
+                if hasattr(button, attr):
+                    try:
+                        delattr(button, attr)
+                    except Exception:
+                        pass
+
+        written = profiles.write(device)
+        status_lbl.set_text(f"written {written}")
+    profile_combo.connect(GtkSignal.CHANGED.value, load_profile)
+    reload_btn.connect(GtkSignal.CLICKED.value, load_profile)
+    apply_btn.connect(GtkSignal.CLICKED.value, apply_profile)
+
+    frame.show_all()
+    _items[panel_id] = frame
+    _box.pack_start(frame, False, False, 0)
+    load_profile()
+    return frame
+
+
 from solaar.i18n import _
 from solaar.i18n import ngettext
 
@@ -36,6 +199,82 @@ from gi.repository import GLib  # NOQA: E402
 from gi.repository import Gtk  # NOQA: E402
 
 logger = logging.getLogger(__name__)
+
+PRO2_BUTTON_LABELS = [
+    "Left Click",
+    "Right Click",
+    "Middle Click",
+    "Left Side Front",
+    "Left Side Rear",
+    "Right Side Front",
+    "Right Side Rear",
+    "Bottom DPI",
+]
+
+PRO2_BINDING_ORDER = ["left", "right", "middle", "back", "forward", "dpi"]
+
+PRO2_BINDINGS = {
+    "left": {"label": "Left", "behavior": 8, "type": 1, "value": 1},
+    "right": {"label": "Right", "behavior": 8, "type": 1, "value": 2},
+    "middle": {"label": "Middle", "behavior": 8, "type": 1, "value": 4},
+    "back": {"label": "Back", "behavior": 8, "type": 1, "value": 8},
+    "forward": {"label": "Forward", "behavior": 8, "type": 1, "value": 16},
+    "dpi": {"label": "DPI", "behavior": 9, "data": 0, "value": 5},
+}
+
+PRO2_SEND_VALUE_TO_ALIAS = {
+    1: "left",
+    2: "right",
+    4: "middle",
+    8: "back",
+    16: "forward",
+}
+
+
+def _pro2_button_to_alias(button):
+    behavior = getattr(button, "behavior", None)
+    value = getattr(button, "value", None)
+    mapping_type = getattr(button, "type", None)
+    data = getattr(button, "data", None)
+
+    if behavior == 9 and value == 5 and (data is None or data == 0):
+        return "dpi"
+
+    if behavior == 8 and mapping_type == 1:
+        return PRO2_SEND_VALUE_TO_ALIAS.get(value, "left")
+
+    return "left"
+
+
+def _pro2_apply_alias(button, alias):
+    spec = PRO2_BINDINGS[alias]
+
+    button.behavior = spec["behavior"]
+    button.value = spec["value"]
+
+    if "type" in spec:
+        button.type = spec["type"]
+    elif hasattr(button, "type"):
+        try:
+            delattr(button, "type")
+        except Exception:
+            pass
+
+    if "data" in spec:
+        button.data = spec["data"]
+    elif hasattr(button, "data"):
+        try:
+            delattr(button, "data")
+        except Exception:
+            pass
+
+    for attr in ["bytes", "sector", "address", "modifiers"]:
+        if hasattr(button, attr):
+            try:
+                delattr(button, attr)
+            except Exception:
+                pass
+
 
 
 class GtkSignal(Enum):
@@ -869,6 +1108,10 @@ def update(device, is_online=None):
             _box.pack_start(sbox, False, False, 0)
         sensitive = device.persister.get_sensitivity(s.name) if device.persister else True
         _read_async(s, False, sbox, is_online, sensitive)
+
+    if getattr(device, "wpid", None) == "40A8":
+        panel = _pro2_ensure_panel(device)
+        panel.set_visible(True)
 
     _box.set_visible(True)
 
