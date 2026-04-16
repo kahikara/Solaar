@@ -78,6 +78,31 @@ BUTTON_DROPDOWN_ITEMS = [
     ("profile_select", "Profile Select"),
     ("mode_switch", "Mode Switch"),
 ]
+BUTTON_FUNCTION_VALUE_TO_ALIAS = {v: k for k, v in BUTTON_FUNCTION_ALIAS_TO_VALUE.items()}
+
+BUTTON_DROPDOWN_ITEMS = [
+    ("left", "Left"),
+    ("right", "Right"),
+    ("middle", "Middle"),
+    ("back", "Back"),
+    ("forward", "Forward"),
+    ("dpi", "DPI"),
+    ("wheel_up", "Wheel Up"),
+    ("wheel_down", "Wheel Down"),
+    ("tilt_left", "Tilt Left"),
+    ("tilt_right", "Tilt Right"),
+    ("dpi_next", "DPI Next"),
+    ("dpi_previous", "DPI Previous"),
+    ("dpi_default", "DPI Default"),
+    ("dpi_shift", "DPI Shift"),
+    ("profile_next", "Profile Next"),
+    ("profile_previous", "Profile Previous"),
+    ("profile_cycle", "Profile Cycle"),
+    ("g_shift", "G Shift"),
+    ("battery_status", "Battery Status"),
+    ("profile_select", "Profile Select"),
+    ("mode_switch", "Mode Switch"),
+]
 
 
 def _pro2_get_profiles(device):
@@ -155,7 +180,7 @@ def _pro2_ensure_panel(device):
             status_lbl.set_text("profile missing")
             return
 
-        ui_to_slot = [0, 1, 2, 3, 4, 7, 6, 5]
+        ui_to_slot = [0, 1, 2, 4, 3, 7, 6, 5]
 
         for idx, combo in enumerate(button_combos):
             try:
@@ -184,7 +209,7 @@ def _pro2_ensure_panel(device):
             status_lbl.set_text("profile missing")
             return
 
-        ui_to_slot = [0, 1, 2, 3, 4, 7, 6, 5]
+        ui_to_slot = [0, 1, 2, 4, 3, 7, 6, 5]
 
         for idx, combo in enumerate(button_combos):
             alias = combo.get_active_id() or "left"
@@ -449,10 +474,17 @@ class SliderControl(Gtk.Scale, Control):
 
 
 def _create_choice_control(sbox, delegate=None, choices=None):
-    if 50 > len(choices if choices else sbox.setting.choices):
-        return ChoiceControlLittle(sbox, choices=choices, delegate=delegate)
+    holder = getattr(sbox, "setting", sbox)
+    setting_name = getattr(holder, "name", None)
+    effective_choices = choices if choices is not None else holder.choices
+
+    if setting_name in ("dpi", "dpi_extended", "dpi-old"):
+        return ChoiceControlLittle(sbox, choices=effective_choices, delegate=delegate)
+
+    if 50 > len(effective_choices):
+        return ChoiceControlLittle(sbox, choices=effective_choices, delegate=delegate)
     else:
-        return ChoiceControlBig(sbox, choices=choices, delegate=delegate)
+        return ChoiceControlBig(sbox, choices=effective_choices, delegate=delegate)
 
 
 # GTK boxes have property lists, but the keys must be strings
