@@ -1461,35 +1461,6 @@ class OnboardProfile:
 
             if all(x == y and 50 <= x <= 50000 for _stage, x, y in dpi_stages):
                 resolutions = [x for _stage, x, _y in dpi_stages]
-                logger.info(
-                    "%s pro2 sector=%s candidate button ranges raw32=%s raw36=%s raw40=%s raw44=%s raw48=%s raw52=%s raw56=%s raw60=%s",
-                    sector,
-                    sector,
-                    bytes[32:64].hex(),
-                    bytes[36:68].hex(),
-                    bytes[40:72].hex(),
-                    bytes[44:76].hex(),
-                    bytes[48:80].hex(),
-                    bytes[52:84].hex(),
-                    bytes[56:88].hex(),
-                    bytes[60:92].hex(),
-                )
-                logger.info(
-                    "%s pro2 sector=%s candidate gbutton ranges raw80=%s raw84=%s raw88=%s raw92=%s raw96=%s raw100=%s raw104=%s raw108=%s raw112=%s raw116=%s raw120=%s",
-                    sector,
-                    sector,
-                    bytes[80:112].hex(),
-                    bytes[84:116].hex(),
-                    bytes[88:120].hex(),
-                    bytes[92:124].hex(),
-                    bytes[96:128].hex(),
-                    bytes[100:132].hex(),
-                    bytes[104:136].hex(),
-                    bytes[108:140].hex(),
-                    bytes[112:144].hex(),
-                    bytes[116:148].hex(),
-                    bytes[120:152].hex(),
-                )
                 return cls(
                     sector=sector,
                     enabled=enabled,
