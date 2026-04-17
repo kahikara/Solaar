@@ -167,62 +167,81 @@ def _pro2_ensure_panel(device):
 
     frame = Gtk.Frame(label="PRO 2 Onboard Editor")
     frame.set_hexpand(True)
+    frame.set_label_align(0.02, 0.5)
 
-    outer = Gtk.Box.new(Gtk.Orientation.VERTICAL, 10)
+    outer = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
     outer.set_margin_top(10)
     outer.set_margin_bottom(10)
     outer.set_margin_start(10)
     outer.set_margin_end(10)
     frame.add(outer)
 
-    def make_label(text, width=120):
+    content = Gtk.Box.new(Gtk.Orientation.VERTICAL, 10)
+    content.set_halign(Gtk.Align.START)
+    content.set_hexpand(False)
+    outer.pack_start(content, False, False, 0)
+
+    def make_label(text, width=112):
         lbl = Gtk.Label(label=text)
         lbl.set_xalign(0.0)
         lbl.set_size_request(width, -1)
         return lbl
 
-    header = Gtk.Grid(column_spacing=12, row_spacing=8)
-    header.set_hexpand(True)
+    def make_combo(width=150):
+        combo = Gtk.ComboBoxText()
+        combo.set_size_request(width, -1)
+        return combo
 
-    profile_combo = Gtk.ComboBoxText()
+    top_grid = Gtk.Grid(column_spacing=14, row_spacing=8)
+    top_grid.set_halign(Gtk.Align.START)
+    top_grid.set_hexpand(False)
+
+    profile_combo = make_combo(90)
     for i in range(1, 6):
         profile_combo.append(str(i), str(i))
     profile_combo.set_active_id("1")
-    profile_combo.set_size_request(90, -1)
 
-    dpi_combo = Gtk.ComboBoxText()
-    dpi_combo.set_size_request(110, -1)
+    dpi_combo = make_combo(110)
 
     lighting_enabled = Gtk.CheckButton(label="Enable")
     lighting_color = Gtk.ColorButton()
     lighting_color.set_use_alpha(False)
     lighting_color.set_title("Profile Lighting Color")
 
-    lighting_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+    lighting_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 8)
     lighting_box.pack_start(lighting_enabled, False, False, 0)
     lighting_box.pack_start(lighting_color, False, False, 0)
 
-    header.attach(make_label("Profile"), 0, 0, 1, 1)
-    header.attach(profile_combo, 1, 0, 1, 1)
-    header.attach(make_label("DPI Stage"), 2, 0, 1, 1)
-    header.attach(dpi_combo, 3, 0, 1, 1)
-    header.attach(make_label("Lighting"), 4, 0, 1, 1)
-    header.attach(lighting_box, 5, 0, 1, 1)
+    top_grid.attach(make_label("Profile", 88), 0, 0, 1, 1)
+    top_grid.attach(profile_combo, 1, 0, 1, 1)
+    top_grid.attach(make_label("DPI Stage", 88), 2, 0, 1, 1)
+    top_grid.attach(dpi_combo, 3, 0, 1, 1)
+    top_grid.attach(make_label("Lighting", 88), 4, 0, 1, 1)
+    top_grid.attach(lighting_box, 5, 0, 1, 1)
 
-    outer.pack_start(header, False, False, 0)
-    outer.pack_start(Gtk.Separator.new(Gtk.Orientation.HORIZONTAL), False, False, 0)
+    content.pack_start(top_grid, False, False, 0)
 
-    button_grid = Gtk.Grid(column_spacing=18, row_spacing=8)
-    button_grid.set_hexpand(True)
+    buttons_frame = Gtk.Frame(label="Buttons")
+    buttons_frame.set_hexpand(False)
+
+    buttons_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 10)
+    buttons_box.set_margin_top(10)
+    buttons_box.set_margin_bottom(10)
+    buttons_box.set_margin_start(10)
+    buttons_box.set_margin_end(10)
+    buttons_frame.add(buttons_box)
+
+    button_grid = Gtk.Grid(column_spacing=24, row_spacing=8)
+    button_grid.set_halign(Gtk.Align.START)
+    button_grid.set_hexpand(False)
 
     button_combos = []
     for idx, label_text in enumerate(PRO2_BUTTON_LABELS):
         base_col = 0 if idx < 4 else 2
         row_idx = idx if idx < 4 else idx - 4
 
-        lbl = make_label(label_text, 145)
-        combo = Gtk.ComboBoxText()
-        combo.set_size_request(150, -1)
+        lbl = make_label(label_text, 120)
+        combo = make_combo(160)
         for alias, label in BUTTON_DROPDOWN_ITEMS:
             combo.append(alias, label)
         combo.set_active_id("left")
@@ -231,20 +250,23 @@ def _pro2_ensure_panel(device):
         button_grid.attach(combo, base_col + 1, row_idx, 1, 1)
         button_combos.append(combo)
 
-    outer.pack_start(button_grid, False, False, 0)
+    buttons_box.pack_start(button_grid, False, False, 0)
+    content.pack_start(buttons_frame, False, False, 0)
 
-    actions = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+    actions = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 8)
     status_lbl = Gtk.Label(label="")
     status_lbl.set_xalign(0.0)
     status_lbl.set_hexpand(True)
 
     reload_btn = Gtk.Button(label="Reload")
+    reload_btn.set_size_request(88, -1)
     apply_btn = Gtk.Button(label="Apply")
+    apply_btn.set_size_request(88, -1)
 
     actions.pack_start(status_lbl, True, True, 0)
     actions.pack_start(reload_btn, False, False, 0)
     actions.pack_start(apply_btn, False, False, 0)
-    outer.pack_start(actions, False, False, 0)
+    buttons_box.pack_start(actions, False, False, 0)
 
     frame._device = device
     frame._profile_combo = profile_combo
@@ -316,7 +338,7 @@ def _pro2_ensure_panel(device):
         lighting_color.set_rgba(rgba)
         sync_lighting_widgets()
 
-        status_lbl.set_text("Loaded")
+        status_lbl.set_text("Profile loaded")
 
     def apply_profile(*_args):
         profiles = _pro2_get_profiles(device)
@@ -395,7 +417,7 @@ def _pro2_ensure_panel(device):
             ]
 
         written = profiles.write(device)
-        status_lbl.set_text(f"Saved {written}")
+        status_lbl.set_text(f"Saved to mouse ({written})")
 
     profile_combo.connect(GtkSignal.CHANGED.value, load_profile)
     lighting_enabled.connect(GtkSignal.TOGGLED.value, sync_lighting_widgets)
@@ -407,7 +429,6 @@ def _pro2_ensure_panel(device):
     _box.pack_start(frame, False, False, 0)
     load_profile()
     return frame
-
 from solaar.i18n import _
 from solaar.i18n import ngettext
 
@@ -424,10 +445,10 @@ PRO2_BUTTON_LABELS = [
     "Left Click",
     "Right Click",
     "Middle Click",
-    "Left Side Front",
-    "Left Side Rear",
-    "Right Side Front",
-    "Right Side Rear",
+    "Left Front",
+    "Left Rear",
+    "Right Front",
+    "Right Rear",
     "Bottom DPI",
 ]
 
