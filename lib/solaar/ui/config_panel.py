@@ -181,29 +181,29 @@ def _pro2_ensure_panel(device):
     content.set_hexpand(False)
     outer.pack_start(content, False, False, 0)
 
-    def make_label(text, width=112):
+    def make_label(text, width=96):
         lbl = Gtk.Label(label=text)
         lbl.set_xalign(0.0)
         lbl.set_size_request(width, -1)
         return lbl
 
-    def make_combo(width=150):
+    def make_combo(width=138):
         combo = Gtk.ComboBoxText()
         combo.set_size_request(width, -1)
         return combo
 
-    top_grid = Gtk.Grid(column_spacing=14, row_spacing=8)
+    top_grid = Gtk.Grid(column_spacing=8, row_spacing=8)
     top_grid.set_halign(Gtk.Align.START)
     top_grid.set_hexpand(False)
 
-    profile_combo = make_combo(90)
+    profile_combo = make_combo(58)
     for i in range(1, 6):
         profile_combo.append(str(i), str(i))
     profile_combo.set_active_id("1")
 
-    dpi_combo = make_combo(110)
+    dpi_combo = make_combo(78)
 
-    report_rate_combo = make_combo(96)
+    report_rate_combo = make_combo(68)
     for value, label in PRO2_REPORT_RATE_ITEMS:
         report_rate_combo.append(str(value), label)
 
@@ -212,18 +212,20 @@ def _pro2_ensure_panel(device):
     lighting_color.set_use_alpha(False)
     lighting_color.set_title("Profile Lighting Color")
 
-    lighting_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 8)
-    lighting_box.pack_start(lighting_enabled, False, False, 0)
-    lighting_box.pack_start(lighting_color, False, False, 0)
+    lighting_inline = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+    lighting_label = Gtk.Label(label="Lighting")
+    lighting_label.set_xalign(0.0)
+    lighting_inline.pack_start(lighting_label, False, False, 0)
+    lighting_inline.pack_start(lighting_enabled, False, False, 0)
+    lighting_inline.pack_start(lighting_color, False, False, 0)
 
-    top_grid.attach(make_label("Profile", 72), 0, 0, 1, 1)
+    top_grid.attach(make_label("Profile", 54), 0, 0, 1, 1)
     top_grid.attach(profile_combo, 1, 0, 1, 1)
-    top_grid.attach(make_label("Rate", 56), 2, 0, 1, 1)
+    top_grid.attach(make_label("Rate", 42), 2, 0, 1, 1)
     top_grid.attach(report_rate_combo, 3, 0, 1, 1)
-    top_grid.attach(make_label("DPI", 48), 4, 0, 1, 1)
+    top_grid.attach(make_label("DPI", 34), 4, 0, 1, 1)
     top_grid.attach(dpi_combo, 5, 0, 1, 1)
-    top_grid.attach(make_label("Lighting", 72), 6, 0, 1, 1)
-    top_grid.attach(lighting_box, 7, 0, 1, 1)
+    top_grid.attach(lighting_inline, 6, 0, 2, 1)
 
     content.pack_start(top_grid, False, False, 0)
 
@@ -237,7 +239,7 @@ def _pro2_ensure_panel(device):
     buttons_box.set_margin_end(10)
     buttons_frame.add(buttons_box)
 
-    button_grid = Gtk.Grid(column_spacing=24, row_spacing=8)
+    button_grid = Gtk.Grid(column_spacing=16, row_spacing=8)
     button_grid.set_halign(Gtk.Align.START)
     button_grid.set_hexpand(False)
 
@@ -246,8 +248,8 @@ def _pro2_ensure_panel(device):
         base_col = 0 if idx < 4 else 2
         row_idx = idx if idx < 4 else idx - 4
 
-        lbl = make_label(label_text, 120)
-        combo = make_combo(160)
+        lbl = make_label(label_text, 96)
+        combo = make_combo(138)
         for alias, label in BUTTON_DROPDOWN_ITEMS:
             combo.append(alias, label)
         combo.set_active_id("left")
@@ -265,9 +267,9 @@ def _pro2_ensure_panel(device):
     status_lbl.set_hexpand(True)
 
     reload_btn = Gtk.Button(label="Reload")
-    reload_btn.set_size_request(88, -1)
+    reload_btn.set_size_request(74, -1)
     apply_btn = Gtk.Button(label="Apply")
-    apply_btn.set_size_request(88, -1)
+    apply_btn.set_size_request(74, -1)
 
     actions.pack_start(status_lbl, True, True, 0)
     actions.pack_start(reload_btn, False, False, 0)
