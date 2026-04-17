@@ -1537,6 +1537,17 @@ class OnboardProfile:
                 chunk = self.buttons[i].to_bytes() if i < len(self.buttons) else b"\xff\xff\xff\xff"
                 bs[button_base + i * 4:button_base + i * 4 + 4] = chunk
 
+            lighting_base = 208
+            for i in range(4):
+                effect = self.lighting[i] if hasattr(self, "lighting") and i < len(self.lighting) else LEDEffectSetting(ID=0, color=0, ramp=0)
+                try:
+                    chunk = effect.to_bytes()
+                except Exception:
+                    chunk = LEDEffectSetting(ID=0, color=0, ramp=0).to_bytes()
+                off = lighting_base + i * 11
+                if off + 11 <= len(bs):
+                    bs[off:off + 11] = chunk
+
             body = builtins.bytes(bs[:-2])
             crc = common.crc16(body)
             bs[-2:] = common.int2bytes(crc, 2)
