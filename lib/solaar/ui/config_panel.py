@@ -152,6 +152,29 @@ def _pro2_ensure_panel(device):
 
     outer.pack_start(row_dpi, False, False, 0)
 
+    row_lighting = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+    row_lighting.set_size_request(10, 28)
+    lighting_lbl = Gtk.Label(label="Lighting")
+    lighting_lbl.set_size_request(170, 10)
+    lighting_lbl.set_xalign(0.0)
+    row_lighting.pack_start(lighting_lbl, False, False, 0)
+
+    lighting_enabled = Gtk.CheckButton(label="Enable Lighting")
+    row_lighting.pack_start(lighting_enabled, False, False, 0)
+
+    lighting_color = Gtk.ColorButton()
+    lighting_color.set_use_alpha(False)
+    lighting_color.set_title("Profile Lighting Color")
+    row_lighting.pack_start(lighting_color, False, False, 0)
+
+    def sync_lighting_widgets(*_args):
+        active = lighting_enabled.get_active()
+        lighting_color.set_sensitive(active)
+        lighting_color.set_visible(active)
+
+    lighting_enabled.connect(GtkSignal.TOGGLED.value, sync_lighting_widgets)
+    outer.pack_start(row_lighting, False, False, 0)
+
     button_combos = []
     for label_text in PRO2_BUTTON_LABELS:
         row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
@@ -181,6 +204,8 @@ def _pro2_ensure_panel(device):
     frame._profile_combo = profile_combo
     frame._button_combos = button_combos
     frame._dpi_combo = dpi_combo
+    frame._lighting_enabled = lighting_enabled
+    frame._lighting_color = lighting_color
     frame._status_lbl = status_lbl
 
     def load_profile(*_args):
@@ -231,6 +256,13 @@ def _pro2_ensure_panel(device):
             dpi_combo.set_active_id(str(active_idx))
         else:
             dpi_combo.set_active(-1)
+
+        lighting_is_enabled, lighting_color_value = onboard_profile_lighting_load(profile)
+        lighting_enabled.set_active(lighting_is_enabled)
+        rgba = Gdk.RGBA()
+        rgba.parse(f"#{lighting_color_value:06X}")
+        lighting_color.set_rgba(rgba)
+        sync_lighting_widgets()
 
         status_lbl.set_text("loaded")
     def apply_profile(*_args):
@@ -286,6 +318,27 @@ def _pro2_ensure_panel(device):
                     profile.resolution_default_index = dpi_idx
         except Exception:
             pass
+
+        lighting_active = lighting_enabled.get_active()
+        if lighting_active:
+            rgba = lighting_color.get_rgba()
+            r = max(0, min(255, int(round(rgba.red * 255.0))))
+            g = max(0, min(255, int(round(rgba.green * 255.0))))
+            b = max(0, min(255, int(round(rgba.blue * 255.0))))
+            lighting_rgb = (r << 16) | (g << 8) | b
+            profile.lighting = [
+                hidpp20.LEDEffectSetting(ID=0x01, color=lighting_rgb, ramp=0),
+                _disabled_onboard_profile_lighting(),
+                _disabled_onboard_profile_lighting(),
+                _disabled_onboard_profile_lighting(),
+            ]
+        else:
+            profile.lighting = [
+                _disabled_onboard_profile_lighting(),
+                _disabled_onboard_profile_lighting(),
+                _disabled_onboard_profile_lighting(),
+                _disabled_onboard_profile_lighting(),
+            ]
 
         written = profiles.write(device)
         status_lbl.set_text(f"written {written}")
