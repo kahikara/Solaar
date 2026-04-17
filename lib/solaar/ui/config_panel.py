@@ -192,6 +192,73 @@ def _pro2_ensure_panel(device):
         combo.set_size_request(width, -1)
         return combo
 
+    def make_spin(min_value, max_value, width=68):
+        spin = Gtk.SpinButton.new_with_range(min_value, max_value, 1)
+        spin.set_digits(0)
+        spin.set_numeric(True)
+        spin.set_size_request(width, -1)
+        return spin
+
+    def current_profile():
+        profiles = _pro2_get_profiles(device)
+        if not profiles:
+            return None, None, None
+        profile_no = int(profile_combo.get_active_id())
+        profile = profiles.profiles.get(profile_no)
+        return profiles, profile_no, profile
+
+    def lighting_effect_label(effect_id):
+        for value, label in PRO2_LIGHTING_EFFECT_ITEMS:
+            if value == effect_id:
+                return label
+        return str(effect_id)
+
+    def lighting_field_value(effect, name, default):
+        value = getattr(effect, name, None)
+        return default if value is None else int(value)
+
+    def profile_fallback_color(profile):
+        r = int(getattr(profile, "red", 255)) & 0xFF
+        g = int(getattr(profile, "green", 255)) & 0xFF
+        b = int(getattr(profile, "blue", 255)) & 0xFF
+        return (r << 16) | (g << 8) | b
+
+    def color_button_to_int(button):
+        rgba = button.get_rgba()
+        r = max(0, min(255, int(round(rgba.red * 255.0))))
+        g = max(0, min(255, int(round(rgba.green * 255.0))))
+        b = max(0, min(255, int(round(rgba.blue * 255.0))))
+        return (r << 16) | (g << 8) | b
+
+    def set_color_button(button, rgb):
+        rgba = Gdk.RGBA()
+        rgba.parse(f"#{int(rgb) & 0xFFFFFF:06X}")
+        button.set_rgba(rgba)
+
+    def build_lighting_effect():
+        if not lighting_enabled.get_active():
+            return _disabled_onboard_profile_lighting()
+
+        effect_id = int(lighting_effect_combo.get_active_id() or "1")
+        kwargs = {"ID": effect_id}
+
+        if effect_id in {0x01, 0x02, 0x0A}:
+            kwargs["color"] = color_button_to_int(lighting_color)
+
+        if effect_id == 0x01:
+            kwargs["ramp"] = int(lighting_ramp_combo.get_active_id() or "0")
+        elif effect_id == 0x02:
+            kwargs["speed"] = speed_spin.get_value_as_int()
+        elif effect_id == 0x03:
+            kwargs["period"] = period_spin.get_value_as_int()
+            kwargs["intensity"] = intensity_spin.get_value_as_int()
+        elif effect_id == 0x0A:
+            kwargs["period"] = period_spin.get_value_as_int()
+            kwargs["form"] = int(lighting_form_combo.get_active_id() or "0")
+            kwargs["intensity"] = intensity_spin.get_value_as_int()
+
+        return hidpp20.LEDEffectSetting(**kwargs)
+
     top_grid = Gtk.Grid(column_spacing=8, row_spacing=8)
     top_grid.set_halign(Gtk.Align.START)
     top_grid.set_hexpand(False)
@@ -207,27 +274,70 @@ def _pro2_ensure_panel(device):
     for value, label in PRO2_REPORT_RATE_ITEMS:
         report_rate_combo.append(str(value), label)
 
-    lighting_enabled = Gtk.CheckButton(label="Enable")
-    lighting_color = Gtk.ColorButton()
-    lighting_color.set_use_alpha(False)
-    lighting_color.set_title("Profile Lighting Color")
-
-    lighting_inline = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
-    lighting_label = Gtk.Label(label="Lighting")
-    lighting_label.set_xalign(0.0)
-    lighting_inline.pack_start(lighting_label, False, False, 0)
-    lighting_inline.pack_start(lighting_enabled, False, False, 0)
-    lighting_inline.pack_start(lighting_color, False, False, 0)
-
     top_grid.attach(make_label("Profile", 54), 0, 0, 1, 1)
     top_grid.attach(profile_combo, 1, 0, 1, 1)
     top_grid.attach(make_label("Rate", 42), 2, 0, 1, 1)
     top_grid.attach(report_rate_combo, 3, 0, 1, 1)
     top_grid.attach(make_label("DPI", 34), 4, 0, 1, 1)
     top_grid.attach(dpi_combo, 5, 0, 1, 1)
-    top_grid.attach(lighting_inline, 6, 0, 2, 1)
 
     content.pack_start(top_grid, False, False, 0)
+
+    lighting_frame = Gtk.Frame(label="Lighting")
+    lighting_frame.set_hexpand(False)
+
+    lighting_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 8)
+    lighting_box.set_margin_top(8)
+    lighting_box.set_margin_bottom(8)
+    lighting_box.set_margin_start(8)
+    lighting_box.set_margin_end(8)
+    lighting_frame.add(lighting_box)
+
+    lighting_grid = Gtk.Grid(column_spacing=6, row_spacing=8)
+    lighting_grid.set_halign(Gtk.Align.START)
+    lighting_grid.set_hexpand(False)
+
+    lighting_enabled = Gtk.CheckButton(label="Enable")
+
+    lighting_effect_combo = make_combo(92)
+    for value, label in PRO2_LIGHTING_EFFECT_ITEMS:
+        lighting_effect_combo.append(str(value), label)
+
+    lighting_color = Gtk.ColorButton()
+    lighting_color.set_use_alpha(False)
+    lighting_color.set_title("Profile Lighting Color")
+
+    lighting_ramp_combo = make_combo(84)
+    for value, label in PRO2_LIGHTING_RAMP_ITEMS:
+        lighting_ramp_combo.append(str(value), label)
+
+    lighting_form_combo = make_combo(90)
+    for value, label in PRO2_LIGHTING_FORM_ITEMS:
+        lighting_form_combo.append(str(value), label)
+
+    speed_spin = make_spin(0, 255, 64)
+    period_spin = make_spin(100, 5000, 76)
+    intensity_spin = make_spin(0, 100, 64)
+
+    lighting_fields = {}
+
+    def add_lighting_field(name, row, col, label_text, widget, label_width=46):
+        lbl = make_label(label_text, label_width)
+        lighting_grid.attach(lbl, col, row, 1, 1)
+        lighting_grid.attach(widget, col + 1, row, 1, 1)
+        lighting_fields[name] = (lbl, widget)
+
+    lighting_grid.attach(lighting_enabled, 0, 0, 1, 1)
+    add_lighting_field("effect", 0, 1, "Effect", lighting_effect_combo, 44)
+    add_lighting_field("color", 0, 3, "Color", lighting_color, 42)
+    add_lighting_field("ramp", 0, 5, "Ramp", lighting_ramp_combo, 42)
+    add_lighting_field("form", 0, 7, "Form", lighting_form_combo, 40)
+    add_lighting_field("speed", 1, 1, "Speed", speed_spin, 44)
+    add_lighting_field("period", 1, 3, "Period", period_spin, 44)
+    add_lighting_field("intensity", 1, 5, "Intens.", intensity_spin, 48)
+
+    lighting_box.pack_start(lighting_grid, False, False, 0)
+    content.pack_start(lighting_frame, False, False, 0)
 
     buttons_frame = Gtk.Frame(label="Buttons")
     buttons_frame.set_hexpand(False)
@@ -282,22 +392,37 @@ def _pro2_ensure_panel(device):
     frame._dpi_combo = dpi_combo
     frame._report_rate_combo = report_rate_combo
     frame._lighting_enabled = lighting_enabled
+    frame._lighting_effect_combo = lighting_effect_combo
     frame._lighting_color = lighting_color
+    frame._lighting_ramp_combo = lighting_ramp_combo
+    frame._lighting_form_combo = lighting_form_combo
+    frame._lighting_speed_spin = speed_spin
+    frame._lighting_period_spin = period_spin
+    frame._lighting_intensity_spin = intensity_spin
     frame._status_lbl = status_lbl
 
     def sync_lighting_widgets(*_args):
         active = lighting_enabled.get_active()
-        lighting_color.set_sensitive(active)
-        lighting_color.set_visible(active)
+        effect_id = int(lighting_effect_combo.get_active_id() or "0")
+        visible_fields = PRO2_LIGHTING_VISIBLE_FIELDS.get(effect_id, {"effect"}) if active else set()
+
+        for name, (lbl, widget) in lighting_fields.items():
+            visible = active and name in visible_fields
+            lbl.set_visible(visible)
+            widget.set_visible(visible)
+            widget.set_sensitive(visible)
+
+        lighting_grid.show_all()
+        for name, (lbl, widget) in lighting_fields.items():
+            visible = active and name in visible_fields
+            lbl.set_visible(visible)
+            widget.set_visible(visible)
 
     def load_profile(*_args):
-        profiles = _pro2_get_profiles(device)
+        profiles, profile_no, profile = current_profile()
         if not profiles:
             status_lbl.set_text("Read failed")
             return
-
-        profile_no = int(profile_combo.get_active_id())
-        profile = profiles.profiles.get(profile_no)
         if not profile:
             status_lbl.set_text("Profile missing")
             return
@@ -349,23 +474,31 @@ def _pro2_ensure_panel(device):
         else:
             dpi_combo.set_active(-1)
 
-        lighting_is_enabled, lighting_color_value = onboard_profile_lighting_load(profile)
-        lighting_enabled.set_active(lighting_is_enabled)
-        rgba = Gdk.RGBA()
-        rgba.parse(f"#{lighting_color_value:06X}")
-        lighting_color.set_rgba(rgba)
-        sync_lighting_widgets()
+        slot0 = _normalize_onboard_profile_lighting(getattr(profile, "lighting", None))[0]
+        loaded_effect_id = int(getattr(slot0, "ID", 0) or 0)
+        selected_effect_id = loaded_effect_id if loaded_effect_id in PRO2_LIGHTING_EFFECT_IDS else (1 if loaded_effect_id else 0)
 
+        lighting_enabled.set_active(selected_effect_id != 0)
+        lighting_effect_combo.set_active_id(str(selected_effect_id))
+
+        set_color_button(
+            lighting_color,
+            lighting_field_value(slot0, "color", profile_fallback_color(profile)),
+        )
+        lighting_ramp_combo.set_active_id(str(lighting_field_value(slot0, "ramp", 0)))
+        lighting_form_combo.set_active_id(str(lighting_field_value(slot0, "form", 0)))
+        speed_spin.set_value(lighting_field_value(slot0, "speed", 128))
+        period_spin.set_value(lighting_field_value(slot0, "period", 1000))
+        intensity_spin.set_value(lighting_field_value(slot0, "intensity", 100))
+
+        sync_lighting_widgets()
         status_lbl.set_text("Profile loaded")
 
     def apply_profile(*_args):
-        profiles = _pro2_get_profiles(device)
+        profiles, profile_no, profile = current_profile()
         if not profiles:
             status_lbl.set_text("Read failed")
             return
-
-        profile_no = int(profile_combo.get_active_id())
-        profile = profiles.profiles.get(profile_no)
         if not profile:
             status_lbl.set_text("Profile missing")
             return
@@ -420,32 +553,22 @@ def _pro2_ensure_panel(device):
         except Exception:
             pass
 
-        lighting_active = lighting_enabled.get_active()
-        if lighting_active:
-            rgba = lighting_color.get_rgba()
-            r = max(0, min(255, int(round(rgba.red * 255.0))))
-            g = max(0, min(255, int(round(rgba.green * 255.0))))
-            b = max(0, min(255, int(round(rgba.blue * 255.0))))
-            lighting_rgb = (r << 16) | (g << 8) | b
-            profile.lighting = [
-                hidpp20.LEDEffectSetting(ID=0x01, color=lighting_rgb, ramp=0),
-                _disabled_onboard_profile_lighting(),
-                _disabled_onboard_profile_lighting(),
-                _disabled_onboard_profile_lighting(),
-            ]
-        else:
-            profile.lighting = [
-                _disabled_onboard_profile_lighting(),
-                _disabled_onboard_profile_lighting(),
-                _disabled_onboard_profile_lighting(),
-                _disabled_onboard_profile_lighting(),
-            ]
+        slot0 = build_lighting_effect()
+        profile.lighting = [
+            slot0,
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+        ]
 
         written = profiles.write(device)
-        status_lbl.set_text(f"Saved to mouse ({written})")
+        status_lbl.set_text(
+            f"Saved profile {profile_no}: {lighting_effect_label(int(getattr(slot0, 'ID', 0) or 0))} ({written})"
+        )
 
     profile_combo.connect(GtkSignal.CHANGED.value, load_profile)
     lighting_enabled.connect(GtkSignal.TOGGLED.value, sync_lighting_widgets)
+    lighting_effect_combo.connect(GtkSignal.CHANGED.value, sync_lighting_widgets)
     reload_btn.connect(GtkSignal.CLICKED.value, load_profile)
     apply_btn.connect(GtkSignal.CLICKED.value, apply_profile)
 
@@ -487,6 +610,40 @@ PRO2_REPORT_RATE_ITEMS = [
     (7, "7ms"),
     (8, "8ms"),
 ]
+
+PRO2_LIGHTING_EFFECT_ITEMS = [
+    (0x00, "Off"),
+    (0x01, "Static"),
+    (0x02, "Pulse"),
+    (0x03, "Cycle"),
+    (0x0A, "Breathe"),
+]
+
+PRO2_LIGHTING_EFFECT_IDS = {value for value, _label in PRO2_LIGHTING_EFFECT_ITEMS}
+
+PRO2_LIGHTING_RAMP_ITEMS = [
+    (0, "Default"),
+    (1, "Yes"),
+    (2, "No"),
+]
+
+PRO2_LIGHTING_FORM_ITEMS = [
+    (0, "Default"),
+    (1, "Sine"),
+    (2, "Square"),
+    (3, "Triangle"),
+    (4, "Saw"),
+    (5, "Shark"),
+    (6, "Expo"),
+]
+
+PRO2_LIGHTING_VISIBLE_FIELDS = {
+    0x00: set(),
+    0x01: {"effect", "color", "ramp"},
+    0x02: {"effect", "color", "speed"},
+    0x03: {"effect", "period", "intensity"},
+    0x0A: {"effect", "color", "period", "form", "intensity"},
+}
 
 PRO2_BINDING_ORDER = ["left", "right", "middle", "back", "forward", "dpi"]
 
