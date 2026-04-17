@@ -366,13 +366,18 @@ def _pro2_ensure_panel(device):
 
     dpi_combo = make_combo(78)
 
-    top_grid.attach(make_label("Profile", 48), 0, 0, 1, 1)
+    profile_label_widget = make_label("Profile", 48)
+    live_rate_label_widget = make_label("Live", 34)
+    profile_rate_label_widget = make_label("P Rate", 46)
+    dpi_label_widget = make_label("DPI", 34)
+
+    top_grid.attach(profile_label_widget, 0, 0, 1, 1)
     top_grid.attach(profile_combo, 1, 0, 1, 1)
-    top_grid.attach(make_label("Live", 34), 2, 0, 1, 1)
+    top_grid.attach(live_rate_label_widget, 2, 0, 1, 1)
     top_grid.attach(live_rate_combo, 3, 0, 1, 1)
-    top_grid.attach(make_label("P Rate", 46), 4, 0, 1, 1)
+    top_grid.attach(profile_rate_label_widget, 4, 0, 1, 1)
     top_grid.attach(report_rate_combo, 5, 0, 1, 1)
-    top_grid.attach(make_label("DPI", 34), 6, 0, 1, 1)
+    top_grid.attach(dpi_label_widget, 6, 0, 1, 1)
     top_grid.attach(dpi_combo, 7, 0, 1, 1)
 
     content.pack_start(top_grid, False, False, 0)
@@ -665,10 +670,21 @@ def _pro2_ensure_panel(device):
 
         onboard_mode = is_onboard_mode_enabled()
         live_rate_combo.set_sensitive(not onboard_mode)
+
         if onboard_mode:
+            live_rate_label_widget.set_markup("<span alpha='60%'>Live</span>")
+            profile_rate_label_widget.set_markup("<b>P Rate</b>")
+            live_rate_label_widget.set_tooltip_text("Locked while On-Board mode is active")
+            profile_rate_label_widget.set_tooltip_text("Active report rate from the selected onboard profile")
             live_rate_combo.set_tooltip_text("Live report rate is locked while On-Board mode is active")
+            report_rate_combo.set_tooltip_text("Active report rate stored in the selected onboard profile")
         else:
+            live_rate_label_widget.set_markup("<b>Live</b>")
+            profile_rate_label_widget.set_text("P Rate")
+            live_rate_label_widget.set_tooltip_text("Active live host-side report rate")
+            profile_rate_label_widget.set_tooltip_text("Stored report rate in the selected onboard profile")
             live_rate_combo.set_tooltip_text("Live host-side report rate")
+            report_rate_combo.set_tooltip_text("Stored report rate in the selected onboard profile")
 
         if resolutions:
             if active_idx < 0 or active_idx >= len(resolutions):
