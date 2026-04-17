@@ -404,6 +404,11 @@ def _pro2_ensure_panel(device):
     def sync_lighting_widgets(*_args):
         active = lighting_enabled.get_active()
         effect_id = int(lighting_effect_combo.get_active_id() or "0")
+
+        if active and effect_id == 0:
+            lighting_effect_combo.set_active_id("1")
+            effect_id = 1
+
         visible_fields = PRO2_LIGHTING_VISIBLE_FIELDS.get(effect_id, {"effect"}) if active else set()
 
         for name, (lbl, widget) in lighting_fields.items():
