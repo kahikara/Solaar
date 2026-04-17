@@ -23,6 +23,7 @@ from threading import Timer
 import gi
 
 from logitech_receiver import hidpp20
+from logitech_receiver import hidpp20_constants
 from logitech_receiver import settings
 
 BUTTON_ALIAS_TO_VALUE = {
@@ -116,11 +117,19 @@ def _pro2_get_profiles(device):
 PRO2_HIDDEN_SETTING_KEYS = {
     "onboard_profiles",
     "report_rate",
+    "report_rate_extended",
     "sensitivity_dpi",
     "dpi",
+    "dpi_extended",
     "led_control",
     "leds_logo",
     "led_logo",
+    "rgb_control",
+}
+
+PRO2_HIDDEN_SETTING_PREFIXES = {
+    "rgb_zone_",
+    "led_zone_",
 }
 
 
@@ -153,7 +162,14 @@ def _pro2_should_hide_setting(setting):
         _normalize_pro2_setting_key(getattr(setting, "name", None)),
         _normalize_pro2_setting_key(getattr(setting, "label", None)),
     }
-    return any(candidate in PRO2_HIDDEN_SETTING_KEYS for candidate in candidates if candidate)
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if candidate in PRO2_HIDDEN_SETTING_KEYS:
+            return True
+        if any(candidate.startswith(prefix) for prefix in PRO2_HIDDEN_SETTING_PREFIXES):
+            return True
+    return False
 
 
 def _pro2_ensure_panel(device):
@@ -199,6 +215,18 @@ def _pro2_ensure_panel(device):
         spin.set_size_request(width, -1)
         return spin
 
+    def find_setting(exact_name=None, prefix=None):
+        for setting in getattr(device, "settings", []) or []:
+            if exact_name is not None and getattr(setting, "name", None) == exact_name:
+                return setting
+            if prefix is not None and str(getattr(setting, "name", "")).startswith(prefix):
+                return setting
+        return None
+
+    rgb_control_setting = find_setting(exact_name="rgb_control")
+    rgb_zone_setting = find_setting(prefix="rgb_zone_")
+    have_live_rgb = rgb_control_setting is not None and rgb_zone_setting is not None
+
     def current_profile():
         profiles = _pro2_get_profiles(device)
         if not profiles:
@@ -212,6 +240,12 @@ def _pro2_ensure_panel(device):
             if value == effect_id:
                 return label
         return str(effect_id)
+
+    def live_rate_label(rate_id):
+        for value, label in PRO2_LIVE_REPORT_RATE_ITEMS:
+            if value == rate_id:
+                return label
+        return str(rate_id)
 
     def lighting_field_value(effect, name, default):
         value = getattr(effect, name, None)
@@ -235,7 +269,25 @@ def _pro2_ensure_panel(device):
         rgba.parse(f"#{int(rgb) & 0xFFFFFF:06X}")
         button.set_rgba(rgba)
 
-    def build_lighting_effect():
+    def read_live_report_rate():
+        try:
+            reply = device.feature_request(hidpp20_constants.SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x20)
+            if reply:
+                return int(reply[0])
+        except Exception as e:
+            logger.warning("pro2 live report rate read failed on %s: %r", device, e)
+        return None
+
+    def write_live_report_rate():
+        value = live_rate_combo.get_active_id()
+        if value is None:
+            return
+        try:
+            device.feature_request(hidpp20_constants.SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x30, int(value))
+        except Exception as e:
+            logger.warning("pro2 live report rate write failed on %s: %r", device, e)
+
+    def build_onboard_lighting_effect():
         if not lighting_enabled.get_active():
             return _disabled_onboard_profile_lighting()
 
@@ -259,6 +311,27 @@ def _pro2_ensure_panel(device):
 
         return hidpp20.LEDEffectSetting(**kwargs)
 
+    def build_live_rgb_effect():
+        effect_id = int(rgb_effect_combo.get_active_id() or "0")
+        kwargs = {"ID": effect_id}
+
+        if effect_id in {0x01, 0x02, 0x0A}:
+            kwargs["color"] = color_button_to_int(rgb_color)
+
+        if effect_id == 0x01:
+            kwargs["ramp"] = int(rgb_ramp_combo.get_active_id() or "0")
+        elif effect_id == 0x02:
+            kwargs["speed"] = rgb_speed_spin.get_value_as_int()
+        elif effect_id == 0x03:
+            kwargs["period"] = rgb_period_spin.get_value_as_int()
+            kwargs["intensity"] = rgb_intensity_spin.get_value_as_int()
+        elif effect_id == 0x0A:
+            kwargs["period"] = rgb_period_spin.get_value_as_int()
+            kwargs["form"] = int(rgb_form_combo.get_active_id() or "0")
+            kwargs["intensity"] = rgb_intensity_spin.get_value_as_int()
+
+        return hidpp20.LEDEffectSetting(**kwargs)
+
     top_grid = Gtk.Grid(column_spacing=8, row_spacing=8)
     top_grid.set_halign(Gtk.Align.START)
     top_grid.set_hexpand(False)
@@ -268,22 +341,28 @@ def _pro2_ensure_panel(device):
         profile_combo.append(str(i), str(i))
     profile_combo.set_active_id("1")
 
-    dpi_combo = make_combo(78)
+    live_rate_combo = make_combo(76)
+    for value, label in PRO2_LIVE_REPORT_RATE_ITEMS:
+        live_rate_combo.append(str(value), label)
 
     report_rate_combo = make_combo(68)
     for value, label in PRO2_REPORT_RATE_ITEMS:
         report_rate_combo.append(str(value), label)
 
-    top_grid.attach(make_label("Profile", 54), 0, 0, 1, 1)
+    dpi_combo = make_combo(78)
+
+    top_grid.attach(make_label("Profile", 48), 0, 0, 1, 1)
     top_grid.attach(profile_combo, 1, 0, 1, 1)
-    top_grid.attach(make_label("Rate", 42), 2, 0, 1, 1)
-    top_grid.attach(report_rate_combo, 3, 0, 1, 1)
-    top_grid.attach(make_label("DPI", 34), 4, 0, 1, 1)
-    top_grid.attach(dpi_combo, 5, 0, 1, 1)
+    top_grid.attach(make_label("Live", 34), 2, 0, 1, 1)
+    top_grid.attach(live_rate_combo, 3, 0, 1, 1)
+    top_grid.attach(make_label("P Rate", 46), 4, 0, 1, 1)
+    top_grid.attach(report_rate_combo, 5, 0, 1, 1)
+    top_grid.attach(make_label("DPI", 34), 6, 0, 1, 1)
+    top_grid.attach(dpi_combo, 7, 0, 1, 1)
 
     content.pack_start(top_grid, False, False, 0)
 
-    lighting_frame = Gtk.Frame(label="Lighting")
+    lighting_frame = Gtk.Frame(label="Profile Lighting")
     lighting_frame.set_hexpand(False)
 
     lighting_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 8)
@@ -339,6 +418,64 @@ def _pro2_ensure_panel(device):
     lighting_box.pack_start(lighting_grid, False, False, 0)
     content.pack_start(lighting_frame, False, False, 0)
 
+    live_rgb_frame = Gtk.Frame(label="Live RGB")
+    live_rgb_frame.set_hexpand(False)
+
+    live_rgb_box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 8)
+    live_rgb_box.set_margin_top(8)
+    live_rgb_box.set_margin_bottom(8)
+    live_rgb_box.set_margin_start(8)
+    live_rgb_box.set_margin_end(8)
+    live_rgb_frame.add(live_rgb_box)
+
+    live_rgb_grid = Gtk.Grid(column_spacing=6, row_spacing=8)
+    live_rgb_grid.set_halign(Gtk.Align.START)
+    live_rgb_grid.set_hexpand(False)
+
+    rgb_mode_combo = make_combo(78)
+    rgb_mode_combo.append("0", "Device")
+    rgb_mode_combo.append("1", "Solaar")
+
+    rgb_effect_combo = make_combo(92)
+    for value, label in PRO2_LIGHTING_EFFECT_ITEMS:
+        rgb_effect_combo.append(str(value), label)
+
+    rgb_color = Gtk.ColorButton()
+    rgb_color.set_use_alpha(False)
+    rgb_color.set_title("Live RGB Color")
+
+    rgb_ramp_combo = make_combo(84)
+    for value, label in PRO2_LIGHTING_RAMP_ITEMS:
+        rgb_ramp_combo.append(str(value), label)
+
+    rgb_form_combo = make_combo(90)
+    for value, label in PRO2_LIGHTING_FORM_ITEMS:
+        rgb_form_combo.append(str(value), label)
+
+    rgb_speed_spin = make_spin(0, 255, 64)
+    rgb_period_spin = make_spin(100, 5000, 76)
+    rgb_intensity_spin = make_spin(0, 100, 64)
+
+    rgb_fields = {}
+
+    def add_rgb_field(name, row, col, label_text, widget, label_width=46):
+        lbl = make_label(label_text, label_width)
+        live_rgb_grid.attach(lbl, col, row, 1, 1)
+        live_rgb_grid.attach(widget, col + 1, row, 1, 1)
+        rgb_fields[name] = (lbl, widget)
+
+    add_rgb_field("mode", 0, 0, "Mode", rgb_mode_combo, 40)
+    add_rgb_field("effect", 0, 2, "Effect", rgb_effect_combo, 44)
+    add_rgb_field("color", 0, 4, "Color", rgb_color, 42)
+    add_rgb_field("ramp", 0, 6, "Ramp", rgb_ramp_combo, 42)
+    add_rgb_field("form", 0, 8, "Form", rgb_form_combo, 40)
+    add_rgb_field("speed", 1, 2, "Speed", rgb_speed_spin, 44)
+    add_rgb_field("period", 1, 4, "Period", rgb_period_spin, 44)
+    add_rgb_field("intensity", 1, 6, "Intens.", rgb_intensity_spin, 48)
+
+    live_rgb_box.pack_start(live_rgb_grid, False, False, 0)
+    content.pack_start(live_rgb_frame, False, False, 0)
+
     buttons_frame = Gtk.Frame(label="Buttons")
     buttons_frame.set_hexpand(False)
 
@@ -388,6 +525,7 @@ def _pro2_ensure_panel(device):
 
     frame._device = device
     frame._profile_combo = profile_combo
+    frame._live_rate_combo = live_rate_combo
     frame._button_combos = button_combos
     frame._dpi_combo = dpi_combo
     frame._report_rate_combo = report_rate_combo
@@ -399,6 +537,14 @@ def _pro2_ensure_panel(device):
     frame._lighting_speed_spin = speed_spin
     frame._lighting_period_spin = period_spin
     frame._lighting_intensity_spin = intensity_spin
+    frame._rgb_mode_combo = rgb_mode_combo
+    frame._rgb_effect_combo = rgb_effect_combo
+    frame._rgb_color = rgb_color
+    frame._rgb_ramp_combo = rgb_ramp_combo
+    frame._rgb_form_combo = rgb_form_combo
+    frame._rgb_speed_spin = rgb_speed_spin
+    frame._rgb_period_spin = rgb_period_spin
+    frame._rgb_intensity_spin = rgb_intensity_spin
     frame._status_lbl = status_lbl
 
     def sync_lighting_widgets(*_args):
@@ -420,6 +566,32 @@ def _pro2_ensure_panel(device):
         lighting_grid.show_all()
         for name, (lbl, widget) in lighting_fields.items():
             visible = active and name in visible_fields
+            lbl.set_visible(visible)
+            widget.set_visible(visible)
+
+    def sync_rgb_widgets(*_args):
+        if not have_live_rgb:
+            live_rgb_frame.hide()
+            return
+
+        live_rgb_frame.show()
+        mode_value = int(rgb_mode_combo.get_active_id() or "0")
+        effect_id = int(rgb_effect_combo.get_active_id() or "0")
+
+        if mode_value == 1:
+            visible_fields = {"mode", "effect"} | PRO2_LIGHTING_VISIBLE_FIELDS.get(effect_id, set())
+        else:
+            visible_fields = {"mode"}
+
+        for name, (lbl, widget) in rgb_fields.items():
+            visible = name in visible_fields
+            lbl.set_visible(visible)
+            widget.set_visible(visible)
+            widget.set_sensitive(visible)
+
+        live_rgb_grid.show_all()
+        for name, (lbl, widget) in rgb_fields.items():
+            visible = name in visible_fields
             lbl.set_visible(visible)
             widget.set_visible(visible)
 
@@ -472,6 +644,10 @@ def _pro2_ensure_panel(device):
             report_rate_combo.set_active_id("1")
         report_rate_combo.set_active_id(str(current_rate) if 1 <= current_rate <= 8 else "1")
 
+        live_rate_value = read_live_report_rate()
+        if live_rate_value is not None:
+            live_rate_combo.set_active_id(str(live_rate_value))
+
         if resolutions:
             if active_idx < 0 or active_idx >= len(resolutions):
                 active_idx = 0
@@ -496,7 +672,34 @@ def _pro2_ensure_panel(device):
         period_spin.set_value(lighting_field_value(slot0, "period", 1000))
         intensity_spin.set_value(lighting_field_value(slot0, "intensity", 100))
 
+        if have_live_rgb:
+            try:
+                rgb_mode_value = rgb_control_setting.read()
+                rgb_mode_combo.set_active_id(str(int(rgb_mode_value) if rgb_mode_value is not None else 0))
+            except Exception as e:
+                logger.warning("pro2 live rgb control read failed on %s: %r", device, e)
+                rgb_mode_combo.set_active_id("0")
+
+            try:
+                rgb_effect = rgb_zone_setting.read()
+            except Exception as e:
+                logger.warning("pro2 live rgb zone read failed on %s: %r", device, e)
+                rgb_effect = hidpp20.LEDEffectSetting(ID=0)
+
+            rgb_effect_id = int(getattr(rgb_effect, "ID", 0) or 0)
+            if rgb_effect_id not in PRO2_LIGHTING_EFFECT_IDS:
+                rgb_effect_id = 0
+
+            rgb_effect_combo.set_active_id(str(rgb_effect_id))
+            set_color_button(rgb_color, lighting_field_value(rgb_effect, "color", 0xFFFFFF))
+            rgb_ramp_combo.set_active_id(str(lighting_field_value(rgb_effect, "ramp", 0)))
+            rgb_form_combo.set_active_id(str(lighting_field_value(rgb_effect, "form", 0)))
+            rgb_speed_spin.set_value(lighting_field_value(rgb_effect, "speed", 128))
+            rgb_period_spin.set_value(lighting_field_value(rgb_effect, "period", 1000))
+            rgb_intensity_spin.set_value(lighting_field_value(rgb_effect, "intensity", 100))
+
         sync_lighting_widgets()
+        sync_rgb_widgets()
         status_lbl.set_text("Profile loaded")
 
     def apply_profile(*_args):
@@ -558,7 +761,7 @@ def _pro2_ensure_panel(device):
         except Exception:
             pass
 
-        slot0 = build_lighting_effect()
+        slot0 = build_onboard_lighting_effect()
         profile.lighting = [
             slot0,
             _disabled_onboard_profile_lighting(),
@@ -567,17 +770,44 @@ def _pro2_ensure_panel(device):
         ]
 
         written = profiles.write(device)
+
+        live_rate_value = live_rate_combo.get_active_id()
+        write_live_report_rate()
+
+        live_rgb_summary = ""
+        if have_live_rgb:
+            try:
+                rgb_mode_value = int(rgb_mode_combo.get_active_id() or "0")
+                rgb_control_setting.write(rgb_mode_value)
+                if rgb_mode_value == 1:
+                    rgb_effect = build_live_rgb_effect()
+                    rgb_zone_setting.write(rgb_effect)
+                    live_rgb_summary = f" / RGB {lighting_effect_label(int(getattr(rgb_effect, 'ID', 0) or 0))}"
+                else:
+                    live_rgb_summary = " / RGB Device"
+            except Exception as e:
+                logger.warning("pro2 live rgb write failed on %s: %r", device, e)
+                live_rgb_summary = " / RGB error"
+
+        live_rate_summary = ""
+        if live_rate_value is not None:
+            live_rate_summary = f" / Live {live_rate_label(int(live_rate_value))}"
+
         status_lbl.set_text(
-            f"Saved profile {profile_no}: {lighting_effect_label(int(getattr(slot0, 'ID', 0) or 0))} ({written})"
+            f"Saved profile {profile_no}: {lighting_effect_label(int(getattr(slot0, 'ID', 0) or 0))}{live_rate_summary}{live_rgb_summary} ({written})"
         )
 
     profile_combo.connect(GtkSignal.CHANGED.value, load_profile)
     lighting_enabled.connect(GtkSignal.TOGGLED.value, sync_lighting_widgets)
     lighting_effect_combo.connect(GtkSignal.CHANGED.value, sync_lighting_widgets)
+    rgb_mode_combo.connect(GtkSignal.CHANGED.value, sync_rgb_widgets)
+    rgb_effect_combo.connect(GtkSignal.CHANGED.value, sync_rgb_widgets)
     reload_btn.connect(GtkSignal.CLICKED.value, load_profile)
     apply_btn.connect(GtkSignal.CLICKED.value, apply_profile)
 
     frame.show_all()
+    if not have_live_rgb:
+        live_rgb_frame.hide()
     _items[panel_id] = frame
     _box.pack_start(frame, False, False, 0)
     load_profile()
@@ -614,6 +844,16 @@ PRO2_REPORT_RATE_ITEMS = [
     (6, "6ms"),
     (7, "7ms"),
     (8, "8ms"),
+]
+
+PRO2_LIVE_REPORT_RATE_ITEMS = [
+    (0, "8ms"),
+    (1, "4ms"),
+    (2, "2ms"),
+    (3, "1ms"),
+    (4, "500us"),
+    (5, "250us"),
+    (6, "125us"),
 ]
 
 PRO2_LIGHTING_EFFECT_ITEMS = [
