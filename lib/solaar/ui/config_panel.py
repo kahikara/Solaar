@@ -1049,6 +1049,155 @@ class HeteroKeyControl(Gtk.HBox, Control):
             _write_async(self.sbox.setting, new_state, self.sbox)
 
 
+def _disabled_onboard_profile_lighting():
+    return hidpp20.LEDEffectSetting(ID=0, color=0, ramp=0)
+
+
+def _clone_onboard_profile_led_effect(effect):
+    if effect is None:
+        return _disabled_onboard_profile_lighting()
+    try:
+        return hidpp20.LEDEffectSetting.from_bytes(effect.to_bytes())
+    except Exception:
+        return _disabled_onboard_profile_lighting()
+
+
+def _normalize_onboard_profile_lighting(lighting):
+    result = [_clone_onboard_profile_led_effect(effect) for effect in (lighting or [])]
+    while len(result) < 4:
+        result.append(_disabled_onboard_profile_lighting())
+    return result[:4]
+
+
+def onboard_profile_lighting_load(profile):
+    lighting = _normalize_onboard_profile_lighting(getattr(profile, "lighting", None))
+    slot0 = lighting[0]
+    effect_id = getattr(slot0, "ID", None)
+    enabled = effect_id is not None and int(effect_id) != 0
+    color = getattr(slot0, "color", None)
+    if color is None:
+        r = int(getattr(profile, "red", 255)) & 0xFF
+        g = int(getattr(profile, "green", 255)) & 0xFF
+        b = int(getattr(profile, "blue", 255)) & 0xFF
+        color = (r << 16) | (g << 8) | b
+    return enabled, int(color) & 0xFFFFFF
+
+
+def onboard_profile_lighting_apply(device, profiles, profile_index, enabled, color, done_cb=None):
+    profile = profiles.profiles[profile_index]
+    previous_lighting = _normalize_onboard_profile_lighting(getattr(profile, "lighting", None))
+    color = int(color) & 0xFFFFFF
+
+    if enabled:
+        profile.lighting = [
+            hidpp20.LEDEffectSetting(ID=0x01, color=color, ramp=0),
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+        ]
+    else:
+        profile.lighting = [
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+            _disabled_onboard_profile_lighting(),
+        ]
+
+    def _done(ok):
+        if done_cb:
+            done_cb(ok)
+        return False
+
+    def _worker():
+        ok = True
+        try:
+            profiles.write(device)
+        except Exception:
+            ok = False
+            logger.exception(
+                "failed to write onboard profile lighting for profile %s on %s",
+                profile_index,
+                device,
+            )
+            profile.lighting = previous_lighting
+        GLib.idle_add(_done, ok, priority=99)
+
+    ui_async(_worker)
+
+
+class OnboardProfileLightingControl(Gtk.HBox):
+    def __init__(self, device, profiles, profile_index):
+        super().__init__(homogeneous=False, spacing=6)
+        self._device = device
+        self._profiles = profiles
+        self._profile_index = profile_index
+        self._loading = False
+
+        self._label = Gtk.Label(label=_("Lighting"))
+        self._label.set_xalign(0.0)
+
+        self._enabled = Gtk.CheckButton(label=_("Enable Lighting"))
+        self._color = Gtk.ColorButton()
+        self._color.set_use_alpha(False)
+        self._color.set_title(_("Profile Lighting Color"))
+
+        self.pack_start(self._label, True, True, 0)
+        self.pack_start(self._enabled, False, False, 0)
+        self.pack_start(self._color, False, False, 0)
+
+        self._enabled.connect(GtkSignal.TOGGLED.value, self._changed)
+        self._color.connect(GtkSignal.COLOR_SET.value, self._changed)
+
+        self.load()
+
+    def _set_color(self, rgb):
+        rgba = Gdk.RGBA()
+        rgba.parse(f"#{int(rgb) & 0xFFFFFF:06X}")
+        self._color.set_rgba(rgba)
+
+    def _get_color(self):
+        rgba = self._color.get_rgba()
+        r = max(0, min(255, int(round(rgba.red * 255.0))))
+        g = max(0, min(255, int(round(rgba.green * 255.0))))
+        b = max(0, min(255, int(round(rgba.blue * 255.0))))
+        return (r << 16) | (g << 8) | b
+
+    def load(self):
+        enabled, color = onboard_profile_lighting_load(self._profiles.profiles[self._profile_index])
+        self._loading = True
+        self._enabled.set_active(enabled)
+        self._set_color(color)
+        self._color.set_sensitive(enabled)
+        self._color.set_visible(enabled)
+        self._loading = False
+
+    def _changed(self, *_args):
+        if self._loading:
+            return
+        enabled = self._enabled.get_active()
+        self._color.set_sensitive(enabled)
+        self._color.set_visible(enabled)
+        self.set_sensitive(False)
+
+        def _done(ok):
+            self.set_sensitive(True)
+            if not ok:
+                self.load()
+
+        onboard_profile_lighting_apply(
+            self._device,
+            self._profiles,
+            self._profile_index,
+            enabled,
+            self._get_color(),
+            done_cb=_done,
+        )
+
+
+def create_onboard_profile_lighting_row(device, profiles, profile_index):
+    return OnboardProfileLightingControl(device, profiles, profile_index)
+
+
 _allowables_icons = {True: "changes-allow", False: "changes-prevent", settings.SENSITIVITY_IGNORE: "dialog-error"}
 _allowables_tooltips = {
     True: _("Changes allowed"),
