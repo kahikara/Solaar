@@ -269,6 +269,15 @@ def _pro2_ensure_panel(device):
         rgba.parse(f"#{int(rgb) & 0xFFFFFF:06X}")
         button.set_rgba(rgba)
 
+    def is_onboard_mode_enabled():
+        try:
+            reply = device.feature_request(hidpp20_constants.SupportedFeature.ONBOARD_PROFILES, 0x20)
+            if reply:
+                return reply[0] == 0x01
+        except Exception as e:
+            logger.warning("pro2 onboard mode read failed on %s: %r", device, e)
+        return False
+
     def read_live_report_rate():
         try:
             reply = device.feature_request(hidpp20_constants.SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x20)
@@ -279,13 +288,19 @@ def _pro2_ensure_panel(device):
         return None
 
     def write_live_report_rate():
+        if is_onboard_mode_enabled():
+            return False
+
         value = live_rate_combo.get_active_id()
         if value is None:
-            return
+            return False
+
         try:
             device.feature_request(hidpp20_constants.SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x30, int(value))
+            return True
         except Exception as e:
             logger.warning("pro2 live report rate write failed on %s: %r", device, e)
+            return False
 
     def build_onboard_lighting_effect():
         if not lighting_enabled.get_active():
@@ -648,6 +663,13 @@ def _pro2_ensure_panel(device):
         if live_rate_value is not None:
             live_rate_combo.set_active_id(str(live_rate_value))
 
+        onboard_mode = is_onboard_mode_enabled()
+        live_rate_combo.set_sensitive(not onboard_mode)
+        if onboard_mode:
+            live_rate_combo.set_tooltip_text("Live report rate is locked while On-Board mode is active")
+        else:
+            live_rate_combo.set_tooltip_text("Live host-side report rate")
+
         if resolutions:
             if active_idx < 0 or active_idx >= len(resolutions):
                 active_idx = 0
@@ -772,7 +794,8 @@ def _pro2_ensure_panel(device):
         written = profiles.write(device)
 
         live_rate_value = live_rate_combo.get_active_id()
-        write_live_report_rate()
+        live_rate_written = write_live_report_rate()
+        onboard_mode = is_onboard_mode_enabled()
 
         live_rgb_summary = ""
         if have_live_rgb:
@@ -791,7 +814,12 @@ def _pro2_ensure_panel(device):
 
         live_rate_summary = ""
         if live_rate_value is not None:
-            live_rate_summary = f" / Live {live_rate_label(int(live_rate_value))}"
+            if onboard_mode:
+                live_rate_summary = f" / Live locked by On-Board mode"
+            elif live_rate_written:
+                live_rate_summary = f" / Live {live_rate_label(int(live_rate_value))}"
+            else:
+                live_rate_summary = " / Live write failed"
 
         status_lbl.set_text(
             f"Saved profile {profile_no}: {lighting_effect_label(int(getattr(slot0, 'ID', 0) or 0))}{live_rate_summary}{live_rgb_summary} ({written})"
