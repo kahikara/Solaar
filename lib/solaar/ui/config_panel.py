@@ -203,6 +203,10 @@ def _pro2_ensure_panel(device):
 
     dpi_combo = make_combo(110)
 
+    report_rate_combo = make_combo(96)
+    for value, label in PRO2_REPORT_RATE_ITEMS:
+        report_rate_combo.append(str(value), label)
+
     lighting_enabled = Gtk.CheckButton(label="Enable")
     lighting_color = Gtk.ColorButton()
     lighting_color.set_use_alpha(False)
@@ -212,12 +216,14 @@ def _pro2_ensure_panel(device):
     lighting_box.pack_start(lighting_enabled, False, False, 0)
     lighting_box.pack_start(lighting_color, False, False, 0)
 
-    top_grid.attach(make_label("Profile", 88), 0, 0, 1, 1)
+    top_grid.attach(make_label("Profile", 72), 0, 0, 1, 1)
     top_grid.attach(profile_combo, 1, 0, 1, 1)
-    top_grid.attach(make_label("DPI Stage", 88), 2, 0, 1, 1)
-    top_grid.attach(dpi_combo, 3, 0, 1, 1)
-    top_grid.attach(make_label("Lighting", 88), 4, 0, 1, 1)
-    top_grid.attach(lighting_box, 5, 0, 1, 1)
+    top_grid.attach(make_label("Rate", 56), 2, 0, 1, 1)
+    top_grid.attach(report_rate_combo, 3, 0, 1, 1)
+    top_grid.attach(make_label("DPI", 48), 4, 0, 1, 1)
+    top_grid.attach(dpi_combo, 5, 0, 1, 1)
+    top_grid.attach(make_label("Lighting", 72), 6, 0, 1, 1)
+    top_grid.attach(lighting_box, 7, 0, 1, 1)
 
     content.pack_start(top_grid, False, False, 0)
 
@@ -272,6 +278,7 @@ def _pro2_ensure_panel(device):
     frame._profile_combo = profile_combo
     frame._button_combos = button_combos
     frame._dpi_combo = dpi_combo
+    frame._report_rate_combo = report_rate_combo
     frame._lighting_enabled = lighting_enabled
     frame._lighting_color = lighting_color
     frame._status_lbl = status_lbl
@@ -323,6 +330,15 @@ def _pro2_ensure_panel(device):
             active_idx = int(profile.resolution_default_index)
         except Exception:
             active_idx = 0
+
+        try:
+            current_rate = int(profile.report_rate)
+        except Exception:
+            current_rate = 1
+
+        if report_rate_combo.get_active_id() is None:
+            report_rate_combo.set_active_id("1")
+        report_rate_combo.set_active_id(str(current_rate) if 1 <= current_rate <= 8 else "1")
 
         if resolutions:
             if active_idx < 0 or active_idx >= len(resolutions):
@@ -395,6 +411,13 @@ def _pro2_ensure_panel(device):
         except Exception:
             pass
 
+        try:
+            rate_value = report_rate_combo.get_active_id()
+            if rate_value is not None:
+                profile.report_rate = int(rate_value)
+        except Exception:
+            pass
+
         lighting_active = lighting_enabled.get_active()
         if lighting_active:
             rgba = lighting_color.get_rgba()
@@ -450,6 +473,17 @@ PRO2_BUTTON_LABELS = [
     "Right Front",
     "Right Rear",
     "Bottom DPI",
+]
+
+PRO2_REPORT_RATE_ITEMS = [
+    (1, "1ms"),
+    (2, "2ms"),
+    (3, "3ms"),
+    (4, "4ms"),
+    (5, "5ms"),
+    (6, "6ms"),
+    (7, "7ms"),
+    (8, "8ms"),
 ]
 
 PRO2_BINDING_ORDER = ["left", "right", "middle", "back", "forward", "dpi"]
